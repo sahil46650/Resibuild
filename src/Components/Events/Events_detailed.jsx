@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import Testimonails from "../Testimonails";
+import "./Events_detailed.css";
 
 const Events_detailed = () => {
     const { eventId } = useParams(); // Get slug from the URL
@@ -16,11 +17,12 @@ const Events_detailed = () => {
         side_date: "",
         sidebar_days: [],
         content: "",
+        featuredImage: "",
     });
 
     useEffect(() => {
         // Fetch the event data based on the slug
-        fetch(`https://resi.build/backend/wp-json/wp/v2/events?slug=${eventId}`)
+        fetch(`https://resi.build/backend/wp-json/wp/v2/events?slug=${eventId}&_embed`)
             .then((response) => {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -44,6 +46,7 @@ const Events_detailed = () => {
                             side_date: event.acf.sidebar?.date || "",
                             sidebar_days: event.acf.sidebar?.days || [],
                             content: event.content || "",
+                            featuredImage: event._embedded?.["wp:featuredmedia"]?.[0]?.source_url || "",
                         });
                     } else {
                         console.warn("Event ACF data not found.");
@@ -57,11 +60,66 @@ const Events_detailed = () => {
             });
     }, [eventId]); // Re-run when the slug changes
 
+    useEffect(() => {
+        if (!eventData.content?.rendered) return;
+
+        const initHubspotForm = () => {
+            const formMatch = eventData.content.rendered.match(
+                /data-form-id="([^"]+)"/
+            );
+
+            const portalMatch = eventData.content.rendered.match(
+                /data-portal-id="([^"]+)"/
+            );
+
+            const regionMatch = eventData.content.rendered.match(
+                /data-region="([^"]+)"/
+            );
+
+            if (!formMatch || !portalMatch) return;
+
+            const formId = formMatch[1];
+            const portalId = portalMatch[1];
+            const region = regionMatch ? regionMatch[1] : "eu1";
+
+            const container = document.getElementById("hubspot-event-form");
+
+            if (!container) return;
+
+            container.innerHTML = "";
+
+            if (window.hbspt) {
+                window.hbspt.forms.create({
+                    region,
+                    portalId,
+                    formId,
+                    target: "#hubspot-event-form",
+                });
+            }
+        };
+
+        if (!window.hbspt) {
+            const script = document.createElement("script");
+            script.src = "https://js-eu1.hsforms.net/forms/embed/v2.js";
+            script.async = true;
+            script.onload = initHubspotForm;
+
+            document.body.appendChild(script);
+
+            return () => {
+                document.body.removeChild(script);
+            };
+        } else {
+            initHubspotForm();
+        }
+    }, [eventData.content]);
+
     return (
         <>
             {/* Banner Section */}
             {(eventData.bannertitle || eventData.bannerdescription) && (
-                <div className="page-banner-area bg-1 ptb-130 Insights-page-banner">
+                <div className="page-banner-area bg-1 ptb-130 Insights-page-banner" style={{backgroundImage: `url(${eventData.featuredImage})`, backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat",
+    }}>
                     <div className="container">
                         <div className="page-banner-content">
                             {eventData.bannerdescription && (
@@ -92,6 +150,10 @@ const Events_detailed = () => {
                             {eventData.aboutdesc && <p dangerouslySetInnerHTML={{ __html: eventData.aboutdesc }}/>}
                         </div>
                     )}
+                    {/* Full Width HubSpot Form */}
+                    <div className="event-registration-section mb-5">
+                        <div id="hubspot-event-form" style={{ marginBottom: "40px" }}></div>
+                    </div>
 
                     <div className="row">
                         {/* Sidebar */}
@@ -141,12 +203,41 @@ const Events_detailed = () => {
                         )}
 
                         {/* Event Content */}
-                        {eventData.content && (
+                        {/* {eventData.content && (
                             <div className="col-lg-8">
                                 <div className="case-study-details">
                                     <div
                                         className="event-content"
                                         dangerouslySetInnerHTML={{ __html: eventData.content.rendered }}
+                                    ></div>
+                                </div>
+                            </div>
+                        )} */}
+
+                        {eventData.content && (
+                            <div className="col-lg-8">
+                                <div className="case-study-details">
+
+                                    {/* HubSpot Form */}
+                                    <div
+                                        id="hubspot-event-form"
+                                        style={{ marginBottom: "40px" }}
+                                    ></div>
+
+                                    {/* Event Content */}
+                                    <div
+                                        className="event-content"
+                                        dangerouslySetInnerHTML={{
+                                            __html: eventData.content.rendered
+                                                .replace(
+                                                    /<div className="hs-form-html"[\s\S]*?<\/div>/g,
+                                                    ""
+                                                )
+                                                .replace(
+                                                    /<div className="wp-block-leadin-hubspot-form-block">[\s\S]*?<\/div>/g,
+                                                    ""
+                                                ),
+                                        }}
                                     ></div>
                                 </div>
                             </div>
